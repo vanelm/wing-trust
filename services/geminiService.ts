@@ -4,7 +4,7 @@ import { CertificateInfo } from "../types";
 // Initialize with process.env.API_KEY as per guidelines
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const analyzeCertificate = async (info: CertificateInfo, chainLength: number) => {
+export const analyzeCertificate = async (info: CertificateInfo, chainLength: number, language: string = 'en') => {
   try {
     const prompt = `
       Analyze this X.509 Certificate context:
@@ -13,11 +13,13 @@ export const analyzeCertificate = async (info: CertificateInfo, chainLength: num
       Organization: ${info.organization}
       Validity: ${info.validFrom} to ${info.validTo}
       Chain Length: ${chainLength}
+      
+      Target Language: ${language}
 
       Task:
-      1. Provide a security assessment (short paragraph).
+      1. Provide a security assessment (short paragraph) in ${language}.
       2. Suggest a clean, technical filename based on the Common Name (e.g., wlc.overlords.radio).
-      3. Create a short README content explaining the files in the generated tarball.
+      3. Create a short README content explaining the files in the generated tarball in ${language}.
 
       Return JSON:
       {
@@ -40,9 +42,13 @@ export const analyzeCertificate = async (info: CertificateInfo, chainLength: num
     console.error("Gemini analysis failed:", error);
     // Fallback if API fails
     return {
-      assessment: "Analysis unavailable. Please verify certificate manually.",
+      assessment: language === 'ru' 
+        ? "Анализ недоступен. Пожалуйста, проверьте сертификат вручную." 
+        : "Analysis unavailable. Please verify certificate manually.",
       suggestedFilename: info.commonName.replace(/\*/g, 'wildcard').replace(/[^a-zA-Z0-9.-]/g, '').toLowerCase(),
-      readmeContent: "Certificate Bundle\n\nContains:\n- .crt: Certificate\n- .prv: Private Key\n- .ca: Certificate Authority Chain"
+      readmeContent: language === 'ru'
+        ? "Пакет сертификатов\n\nСодержит:\n- .crt: Сертификат\n- .prv: Приватный ключ\n- .ca: Цепочка сертификатов"
+        : "Certificate Bundle\n\nContains:\n- .crt: Certificate\n- .prv: Private Key\n- .ca: Certificate Authority Chain"
     };
   }
 };

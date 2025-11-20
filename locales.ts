@@ -2,7 +2,7 @@
 export const translations = {
   en: {
     // App Header & Modes
-    appTitle: "CertOps Forge",
+    appTitle: "WiNG Trustpoint Forge",
     modeBuilder: "Builder",
     modeValidator: "Validator",
     stepUpload: "UPLOAD",
@@ -102,7 +102,7 @@ export const translations = {
   },
   ru: {
     // App Header & Modes
-    appTitle: "CertOps Forge",
+    appTitle: "WiNG Trustpoint Фабрика",
     modeBuilder: "Конструктор",
     modeValidator: "Проверка",
     stepUpload: "ЗАГРУЗКА",

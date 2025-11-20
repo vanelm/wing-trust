@@ -105,10 +105,17 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [certPem, keyPem]);
 
+  // Re-trigger analysis if language changes
+  useEffect(() => {
+    if (certInfo) {
+        setIsAnalyzing(true);
+    }
+  }, [language]);
+
   // Run Gemini Analysis
   useEffect(() => {
     if (certInfo && isAnalyzing) {
-      analyzeCertificate(certInfo, chainItems.length + 1).then(result => {
+      analyzeCertificate(certInfo, chainItems.length + 1, language).then(result => {
         setAnalysis(result);
         setCustomFilename(result.suggestedFilename);
         setIsAnalyzing(false);
@@ -119,7 +126,7 @@ export default function App() {
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [certInfo, chainItems.length]); // Re-run if chain changes to update context
+  }, [certInfo, chainItems.length, isAnalyzing, language]); // Re-run if chain changes to update context
 
   const resolveChain = async (info: CertificateInfo, rootPem: string) => {
     setLoadingChain(true);
@@ -432,7 +439,9 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-indigo-600 dark:text-indigo-500" />
-            <span className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white">WiNG <span className="text-indigo-600 dark:text-indigo-400">Trustpoint Forge</span></span>
+            <span className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white">
+              WiNG <span className="text-indigo-600 dark:text-indigo-500">Trustpoint Forge</span>
+            </span>
           </div>
           
           {/* Mode Switcher & Settings */}
