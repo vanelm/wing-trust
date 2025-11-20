@@ -432,7 +432,7 @@ export default function App() {
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-6 h-6 text-indigo-600 dark:text-indigo-500" />
-            <span className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white">CertOps <span className="text-indigo-600 dark:text-indigo-400">Forge</span></span>
+            <span className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white">WiNG <span className="text-indigo-600 dark:text-indigo-400">Trustpoint Forge</span></span>
           </div>
           
           {/* Mode Switcher & Settings */}
