@@ -5,10 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CertOps Forge</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            }
+          }
+        }
+      }
+    </script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
       body {
         font-family: 'Inter', sans-serif;
+        /* Tailwind classes applied via @apply are not supported in CDN directly in standard CSS blocks without plugin, 
+           so we use standard CSS mixed with CSS variables or just let the classes on the body tag in App.tsx handle it,
+           but setting defaults here prevents flash. */
+        background-color: #fafafa; /* zinc-50 */
+        color: #18181b; /* zinc-900 */
+        transition: background-color 0.3s, color 0.3s;
+      }
+      html.dark body {
         background-color: #09090b;
         color: #e4e4e7;
       }
