@@ -3,12 +3,18 @@ import { FileUpload } from './components/FileUpload';
 import { CertViewer } from './components/CertViewer';
 import { SftpModal } from './components/SftpModal';
 import { ChainBuilder } from './components/ChainBuilder';
-import { parseCertificate, checkKeyPair, fetchCertificate, createTarball, verifyParent, isSelfSigned } from './services/cryptoService';
+import { PackageVerifier } from './components/PackageVerifier';
+import { parseCertificate, checkKeyPair, fetchCertificate, createTarball, verifyParent, isSelfSigned, untar, splitCaBundle } from './services/cryptoService';
 import { analyzeCertificate } from './services/geminiService';
 import { CertificateInfo, AppStep, SftpCredentials, ChainItem } from './types';
-import { ArrowRight, Package, UploadCloud, FileKey, Loader2, ShieldCheck, Download, Layers, ChevronRight, RotateCcw, PenLine } from 'lucide-react';
+import { ArrowRight, Package, UploadCloud, FileKey, Loader2, ShieldCheck, Download, Layers, ChevronRight, RotateCcw, PenLine, Hammer, FileSearch } from 'lucide-react';
+
+type AppMode = 'builder' | 'validator';
 
 export default function App() {
+  const [mode, setMode] = useState<AppMode>('builder');
+
+  // --- Builder State ---
   const [step, setStep] = useState<AppStep>(AppStep.UPLOAD);
   const [certPem, setCertPem] = useState<string | null>(null);
   const [keyPem, setKeyPem] = useState<string | null>(null);
@@ -31,23 +37,37 @@ export default function App() {
   const [sftpCreds, setSftpCreds] = useState<SftpCredentials | null>(null);
   const [showSftp, setShowSftp] = useState(false);
 
+  // --- Validator State ---
+  const [validationResult, setValidationResult] = useState<any>(null);
+  const [validatorFileName, setValidatorFileName] = useState<string>('');
+
   const handleReset = () => {
     if (window.confirm("Are you sure you want to clear all data and start over?")) {
-        setStep(AppStep.UPLOAD);
-        setCertPem(null);
-        setKeyPem(null);
-        setCertInfo(null);
-        setChainItems([]);
-        setKeyMatched(false);
-        setIsAnalyzing(false);
-        setAnalysis(null);
-        setCustomFilename('');
-        setLoadingChain(false);
-        setGeneratedTar(null);
-        setGeneratedFileName('');
-        setSftpCreds(null);
-        setShowSftp(false);
+        resetBuilder();
+        resetValidator();
     }
+  };
+
+  const resetBuilder = () => {
+    setStep(AppStep.UPLOAD);
+    setCertPem(null);
+    setKeyPem(null);
+    setCertInfo(null);
+    setChainItems([]);
+    setKeyMatched(false);
+    setIsAnalyzing(false);
+    setAnalysis(null);
+    setCustomFilename('');
+    setLoadingChain(false);
+    setGeneratedTar(null);
+    setGeneratedFileName('');
+    setSftpCreds(null);
+    setShowSftp(false);
+  };
+
+  const resetValidator = () => {
+    setValidationResult(null);
+    setValidatorFileName('');
   };
 
   // Process Certificate when uploaded
@@ -229,6 +249,116 @@ export default function App() {
     setStep(AppStep.DISTRIBUTION);
   };
 
+  // --- Validator Logic ---
+
+  const handleTarUpload = (content: string, filename: string) => {
+     // Note: content comes as string from FileUpload, but for binary TAR we need to handle the input differently
+     // The FileUpload component currently does text. We need to modify it or do a quick hack here to accept drag-n-drop binary in the Validator view.
+     // Or better, FileUpload emits a string, but for TAR validation we should process the file directly.
+     // Let's assume the FileUpload component sends base64 or we can just parse it here if we change how we receive it.
+     // ACTUALLY: FileUpload reads as text. For TAR we need ArrayBuffer.
+     // Let's bypass FileUpload's FileReader for the Validator and implement a direct handler for the file input below.
+  };
+
+  const handleFileChangeForValidator = (e: React.ChangeEvent<HTMLInputElement>) => {
+     const file = e.target.files?.[0];
+     if (!file) return;
+     
+     setValidatorFileName(file.name);
+     const reader = new FileReader();
+     reader.onload = (evt) => {
+         if (evt.target?.result) {
+             processTarForValidation(evt.target.result as ArrayBuffer);
+         }
+     };
+     reader.readAsArrayBuffer(file);
+  };
+
+  const processTarForValidation = (buffer: ArrayBuffer) => {
+     const files = untar(buffer);
+     const details: string[] = [];
+     
+     const certFile = files.find(f => f.name.endsWith('.crt') || f.name.endsWith('.cer') || f.name.endsWith('.pem'));
+     const keyFile = files.find(f => f.name.endsWith('.key') || f.name.endsWith('.prv'));
+     const caFile = files.find(f => f.name.endsWith('.ca') || f.name.endsWith('.bundle'));
+
+     let keyPairMatch: boolean | null = null;
+     let chainComplete: boolean | null = null;
+     let validityStatus: 'valid' | 'expired' | 'not_yet_valid' | 'unknown' = 'unknown';
+     let certInfoVal: CertificateInfo | undefined;
+
+     if (certFile) details.push(`Found Certificate: ${certFile.name}`);
+     else details.push("Error: No .crt/.cer found");
+
+     if (keyFile) details.push(`Found Private Key: ${keyFile.name}`);
+     else details.push("Error: No private key found");
+
+     if (certFile) {
+         try {
+             const { info } = parseCertificate(certFile.content);
+             certInfoVal = info;
+             const now = new Date();
+             if (now > info.validTo) validityStatus = 'expired';
+             else if (now < info.validFrom) validityStatus = 'not_yet_valid';
+             else validityStatus = 'valid';
+             
+             details.push(`Parsed Cert: ${info.commonName} (Valid until ${info.validTo.toLocaleDateString()})`);
+         } catch (e) {
+             details.push("Failed to parse certificate content");
+         }
+     }
+
+     if (certFile && keyFile) {
+         keyPairMatch = checkKeyPair(certFile.content, keyFile.content);
+         details.push(keyPairMatch ? "Key pair matched successfully" : "CRITICAL: Private key does not match certificate");
+     }
+
+     if (caFile) {
+         details.push(`Found CA Bundle: ${caFile.name}`);
+         const chainPems = splitCaBundle(caFile.content);
+         details.push(`Bundle contains ${chainPems.length} certificates`);
+         
+         if (chainPems.length > 0 && certFile) {
+             // Verify link from Leaf -> First CA
+             let linked = verifyParent(certFile.content, chainPems[0]);
+             if (!linked) {
+                 details.push("Leaf certificate not signed by first CA in bundle");
+             } else {
+                 // Verify chain internal links
+                 let brokenIndex = -1;
+                 for(let i=0; i < chainPems.length - 1; i++) {
+                     if (!verifyParent(chainPems[i], chainPems[i+1])) {
+                         brokenIndex = i;
+                         break;
+                     }
+                 }
+                 if (brokenIndex > -1) {
+                     details.push(`Chain broken between CA #${brokenIndex+1} and CA #${brokenIndex+2}`);
+                     chainComplete = false;
+                 } else {
+                     details.push("Chain continuity verified");
+                     chainComplete = true;
+                 }
+             }
+             if (chainComplete === null) chainComplete = linked; // If only 1 CA and it signed leaf
+         }
+     } else {
+         details.push("No CA Bundle found. Cannot verify full chain.");
+         chainComplete = null;
+     }
+
+     setValidationResult({
+         hasCert: !!certFile,
+         hasKey: !!keyFile,
+         hasCa: !!caFile,
+         keyPairMatch,
+         chainComplete,
+         validityStatus,
+         certInfo: certInfoVal,
+         details
+     });
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-200 selection:bg-indigo-500/30">
       {/* Header */}
@@ -239,200 +369,229 @@ export default function App() {
             <span className="font-bold text-lg tracking-tight text-white">CertOps <span className="text-indigo-400">Forge</span></span>
           </div>
           
+          {/* Mode Switcher */}
+          <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800">
+             <button 
+                onClick={() => setMode('builder')}
+                className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'builder' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+             >
+                <Hammer size={12} /> Builder
+             </button>
+             <button 
+                onClick={() => setMode('validator')}
+                className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'validator' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-zinc-300'}`}
+             >
+                <FileSearch size={12} /> Validator
+             </button>
+          </div>
+
           <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-2 text-xs font-mono text-zinc-500">
-                <span className={`flex items-center gap-1 ${step >= 0 ? 'text-indigo-400' : ''}`}>
-                    1. UPLOAD
-                </span>
-                <ChevronRight size={12} />
-                <button 
-                    onClick={() => setStep(AppStep.CHAIN_BUILD)}
-                    disabled={!certInfo}
-                    className={`flex items-center gap-1 hover:text-indigo-300 transition-colors ${step === AppStep.CHAIN_BUILD ? 'text-indigo-400 font-bold' : ''}`}
-                >
-                    2. CHAIN
-                </button>
-                <ChevronRight size={12} />
-                <button
-                    onClick={() => setStep(AppStep.ANALYSIS)}
-                    disabled={step < AppStep.CHAIN_BUILD}
-                    className={`flex items-center gap-1 hover:text-indigo-300 transition-colors ${step === AppStep.ANALYSIS ? 'text-indigo-400 font-bold' : ''}`}
-                >
-                    3. REVIEW
-                </button>
-                <ChevronRight size={12} />
-                <span className={step >= AppStep.PACKAGING ? 'text-indigo-400' : ''}>4. DISTRIBUTE</span>
-            </div>
+            {mode === 'builder' && (
+                <div className="hidden md:flex items-center gap-2 text-xs font-mono text-zinc-500">
+                    <span className={`flex items-center gap-1 ${step >= 0 ? 'text-indigo-400' : ''}`}>1. UPLOAD</span>
+                    <ChevronRight size={12} />
+                    <span className={step >= AppStep.CHAIN_BUILD ? 'text-indigo-400' : ''}>2. CHAIN</span>
+                    <ChevronRight size={12} />
+                    <span className={step >= AppStep.ANALYSIS ? 'text-indigo-400' : ''}>3. REVIEW</span>
+                </div>
+            )}
 
             <button 
                 onClick={handleReset}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 transition-colors text-xs font-medium"
             >
                 <RotateCcw size={14} />
-                <span className="hidden sm:inline">Start Over</span>
             </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Left Column: Inputs - Always Visible but dimmable */}
-          <div className={`lg:col-span-1 space-y-6 transition-opacity duration-300 ${step === AppStep.CHAIN_BUILD ? 'opacity-50 hover:opacity-100' : 'opacity-100'}`}>
-            <div className="space-y-4">
-              <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Source Files</h2>
-              <FileUpload 
-                label="X.509 Certificate (.crt)" 
-                accept=".crt,.pem,.cer"
-                onFileSelect={(c) => setCertPem(c)}
-                fileContent={certPem}
-                onClear={() => { setCertPem(null); setCertInfo(null); }}
-              />
-              <FileUpload 
-                label="Private Key (.key)" 
-                accept=".key,.pem,.prv"
-                icon={FileKey}
-                onFileSelect={(c) => setKeyPem(c)}
-                fileContent={keyPem}
-                onClear={() => setKeyPem(null)}
-              />
-            </div>
-            
-            {/* Info Card Small */}
-            {certInfo && step !== AppStep.UPLOAD && (
-                <div className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800 animate-fade-in">
-                    <div className="text-xs text-zinc-500 uppercase font-bold mb-2">Subject</div>
-                    <div className="font-mono text-sm text-white truncate" title={certInfo.commonName}>{certInfo.commonName}</div>
-                    <div className="mt-2 flex items-center gap-2">
-                       <div className={`w-2 h-2 rounded-full ${keyMatched ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                       <span className="text-xs text-zinc-400">{keyMatched ? 'Key Pair Matched' : 'Key Mismatch'}</span>
-                    </div>
-                </div>
-            )}
-
-            {certInfo && keyMatched && (
-               <button 
-                 onClick={handleGenerateTar}
-                 disabled={isAnalyzing || loadingChain || !chainItems.length}
-                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/20"
-               >
-                 {isAnalyzing ? <Loader2 className="animate-spin w-4 h-4" /> : <Package className="w-4 h-4" />}
-                 {chainItems.length === 0 ? 'Build Chain First' : 'Generate Package'}
-               </button>
-            )}
-          </div>
-
-          {/* Center/Right: Dynamic View */}
-          <div className="lg:col-span-2">
-            {step === AppStep.UPLOAD && !certInfo && (
-                <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-zinc-800 rounded-2xl text-zinc-600 p-12 min-h-[400px]">
-                    <UploadCloud className="w-16 h-16 mb-6 opacity-30" />
-                    <h3 className="text-xl font-medium text-zinc-500 mb-2">Start Your Workspace</h3>
-                    <p className="text-sm">Upload a certificate and matching private key to begin.</p>
-                </div>
-            )}
-
-            {step === AppStep.CHAIN_BUILD && certInfo && (
-                <div className="animate-fade-in">
-                     <div className="mb-4 flex justify-between items-center">
-                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                             <Layers className="text-indigo-400" /> Chain Builder
-                         </h2>
-                         {chainItems.length > 0 && (
-                             <button onClick={() => setStep(AppStep.ANALYSIS)} className="text-sm text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
-                                 Next: Review Analysis <ArrowRight size={14}/>
-                             </button>
-                         )}
-                     </div>
-                     <ChainBuilder 
-                        leafCert={certInfo}
-                        chain={chainItems}
-                        onAddCa={handleAddCa}
-                        onRemoveCa={handleRemoveCa}
-                     />
-                </div>
-            )}
-
-            {(step === AppStep.ANALYSIS || step >= AppStep.PACKAGING) && certInfo && (
-              <div className="space-y-6 animate-fade-in">
-                <CertViewer 
-                  info={certInfo} 
-                  isValid={true} 
-                  chainLength={chainItems.length}
-                  keyMatched={keyMatched}
-                  onDownloadChain={() => setStep(AppStep.CHAIN_BUILD)}
-                  loadingChain={loadingChain}
+        
+        {mode === 'builder' ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left Column: Inputs - Always Visible but dimmable */}
+            <div className={`lg:col-span-1 space-y-6 transition-opacity duration-300 ${step === AppStep.CHAIN_BUILD ? 'opacity-50 hover:opacity-100' : 'opacity-100'}`}>
+                <div className="space-y-4">
+                <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Source Files</h2>
+                <FileUpload 
+                    label="X.509 Certificate (.crt)" 
+                    accept=".crt,.pem,.cer"
+                    onFileSelect={(c) => setCertPem(c)}
+                    fileContent={certPem}
+                    onClear={() => { setCertPem(null); setCertInfo(null); }}
                 />
-
-                {analysis ? (
-                  <div className="bg-zinc-900/30 border border-zinc-800 p-5 rounded-xl space-y-3">
-                    <div className="flex items-center gap-2 text-sm text-indigo-400 font-bold">
-                      <div className="w-2 h-2 bg-indigo-500 rounded-full" />
-                      Security Assessment
-                    </div>
-                    <p className="text-zinc-300 text-sm leading-relaxed">{analysis.assessment}</p>
-                    
-                    <div className="p-3 bg-black/40 rounded border border-zinc-800 font-mono text-xs text-zinc-400 flex items-center gap-3">
-                      <span className="shrink-0">Suggested Filename:</span>
-                      <div className="flex-1 relative">
-                          <input 
-                             type="text" 
-                             value={customFilename}
-                             onChange={(e) => setCustomFilename(e.target.value)}
-                             className="w-full bg-transparent border-none focus:outline-none text-emerald-400 text-sm font-bold border-b border-dashed border-zinc-700 focus:border-emerald-500"
-                          />
-                          <PenLine className="w-3 h-3 text-zinc-600 absolute right-0 top-1 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                    <div className="flex items-center gap-2 text-zinc-500 p-4">
-                        <Loader2 className="animate-spin" /> Analyzing certificate context...
-                    </div>
-                )}
+                <FileUpload 
+                    label="Private Key (.key)" 
+                    accept=".key,.pem,.prv"
+                    icon={FileKey}
+                    onFileSelect={(c) => setKeyPem(c)}
+                    fileContent={keyPem}
+                    onClear={() => setKeyPem(null)}
+                />
+                </div>
                 
-                {(generatedTar || step >= AppStep.PACKAGING) && (
-                  <div className="bg-emerald-900/10 border border-emerald-500/30 p-6 rounded-xl space-y-6 animate-in slide-in-from-bottom-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-lg font-bold text-emerald-400">Package Artifacts Created</h3>
-                        <p className="text-sm text-emerald-400/60 font-mono mt-1">{generatedFileName}</p>
-                      </div>
-                      <div className="p-3 bg-emerald-500/20 rounded-full">
-                        <Package className="w-8 h-8 text-emerald-500" />
-                      </div>
+                {certInfo && step !== AppStep.UPLOAD && (
+                    <div className="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800 animate-fade-in">
+                        <div className="text-xs text-zinc-500 uppercase font-bold mb-2">Subject</div>
+                        <div className="font-mono text-sm text-white truncate" title={certInfo.commonName}>{certInfo.commonName}</div>
+                        <div className="mt-2 flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${keyMatched ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                        <span className="text-xs text-zinc-400">{keyMatched ? 'Key Pair Matched' : 'Key Mismatch'}</span>
+                        </div>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4 text-xs text-zinc-400 font-mono border-t border-emerald-500/20 pt-4">
-                        <div>{customFilename || analysis?.suggestedFilename}.crt</div>
-                        <div>{customFilename || analysis?.suggestedFilename}.prv</div>
-                        <div>{customFilename || analysis?.suggestedFilename}.ca ({chainItems.length} certs)</div>
-                        <div>README.txt</div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                      <button 
-                        onClick={downloadTar}
-                        className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
-                      >
-                        <Download className="w-4 h-4" /> Download Local
-                      </button>
-                      <button 
-                        onClick={uploadToSftp}
-                        disabled={uploading}
-                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
-                      >
-                        {uploading ? <Loader2 className="animate-spin w-4 h-4" /> : <UploadCloud className="w-4 h-4" />}
-                        {uploading ? 'Uploading...' : 'Push to SFTP'}
-                      </button>
-                    </div>
-                  </div>
                 )}
-              </div>
-            )}
-          </div>
-        </div>
+
+                {certInfo && keyMatched && (
+                <button 
+                    onClick={handleGenerateTar}
+                    disabled={isAnalyzing || loadingChain || !chainItems.length}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/20"
+                >
+                    {isAnalyzing ? <Loader2 className="animate-spin w-4 h-4" /> : <Package className="w-4 h-4" />}
+                    {chainItems.length === 0 ? 'Build Chain First' : 'Generate Package'}
+                </button>
+                )}
+            </div>
+
+            {/* Center/Right: Dynamic View */}
+            <div className="lg:col-span-2">
+                {step === AppStep.UPLOAD && !certInfo && (
+                    <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-zinc-800 rounded-2xl text-zinc-600 p-12 min-h-[400px]">
+                        <UploadCloud className="w-16 h-16 mb-6 opacity-30" />
+                        <h3 className="text-xl font-medium text-zinc-500 mb-2">Start Your Workspace</h3>
+                        <p className="text-sm">Upload a certificate and matching private key to begin.</p>
+                    </div>
+                )}
+
+                {step === AppStep.CHAIN_BUILD && certInfo && (
+                    <div className="animate-fade-in">
+                        <div className="mb-4 flex justify-between items-center">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Layers className="text-indigo-400" /> Chain Builder
+                            </h2>
+                            {chainItems.length > 0 && (
+                                <button onClick={() => setStep(AppStep.ANALYSIS)} className="text-sm text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+                                    Next: Review Analysis <ArrowRight size={14}/>
+                                </button>
+                            )}
+                        </div>
+                        <ChainBuilder 
+                            leafCert={certInfo}
+                            chain={chainItems}
+                            onAddCa={handleAddCa}
+                            onRemoveCa={handleRemoveCa}
+                        />
+                    </div>
+                )}
+
+                {(step === AppStep.ANALYSIS || step >= AppStep.PACKAGING) && certInfo && (
+                <div className="space-y-6 animate-fade-in">
+                    <CertViewer 
+                    info={certInfo} 
+                    isValid={true} 
+                    chainLength={chainItems.length}
+                    keyMatched={keyMatched}
+                    onDownloadChain={() => setStep(AppStep.CHAIN_BUILD)}
+                    loadingChain={loadingChain}
+                    />
+
+                    {analysis ? (
+                    <div className="bg-zinc-900/30 border border-zinc-800 p-5 rounded-xl space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-indigo-400 font-bold">
+                        <div className="w-2 h-2 bg-indigo-500 rounded-full" />
+                        Security Assessment
+                        </div>
+                        <p className="text-zinc-300 text-sm leading-relaxed">{analysis.assessment}</p>
+                        
+                        <div className="p-3 bg-black/40 rounded border border-zinc-800 font-mono text-xs text-zinc-400 flex items-center gap-3">
+                        <span className="shrink-0">Suggested Filename:</span>
+                        <div className="flex-1 relative">
+                            <input 
+                                type="text" 
+                                value={customFilename}
+                                onChange={(e) => setCustomFilename(e.target.value)}
+                                className="w-full bg-transparent border-none focus:outline-none text-emerald-400 text-sm font-bold border-b border-dashed border-zinc-700 focus:border-emerald-500"
+                            />
+                            <PenLine className="w-3 h-3 text-zinc-600 absolute right-0 top-1 pointer-events-none" />
+                        </div>
+                        </div>
+                    </div>
+                    ) : (
+                        <div className="flex items-center gap-2 text-zinc-500 p-4">
+                            <Loader2 className="animate-spin" /> Analyzing certificate context...
+                        </div>
+                    )}
+                    
+                    {(generatedTar || step >= AppStep.PACKAGING) && (
+                    <div className="bg-emerald-900/10 border border-emerald-500/30 p-6 rounded-xl space-y-6 animate-in slide-in-from-bottom-4">
+                        <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-bold text-emerald-400">Package Artifacts Created</h3>
+                            <p className="text-sm text-emerald-400/60 font-mono mt-1">{generatedFileName}</p>
+                        </div>
+                        <div className="p-3 bg-emerald-500/20 rounded-full">
+                            <Package className="w-8 h-8 text-emerald-500" />
+                        </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-4 text-xs text-zinc-400 font-mono border-t border-emerald-500/20 pt-4">
+                            <div>{customFilename || analysis?.suggestedFilename}.crt</div>
+                            <div>{customFilename || analysis?.suggestedFilename}.prv</div>
+                            <div>{customFilename || analysis?.suggestedFilename}.ca ({chainItems.length} certs)</div>
+                            <div>README.txt</div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        <button 
+                            onClick={downloadTar}
+                            className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"
+                        >
+                            <Download className="w-4 h-4" /> Download Local
+                        </button>
+                        <button 
+                            onClick={uploadToSftp}
+                            disabled={uploading}
+                            className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
+                        >
+                            {uploading ? <Loader2 className="animate-spin w-4 h-4" /> : <UploadCloud className="w-4 h-4" />}
+                            {uploading ? 'Uploading...' : 'Push to SFTP'}
+                        </button>
+                        </div>
+                    </div>
+                    )}
+                </div>
+                )}
+            </div>
+            </div>
+        ) : (
+            // --- VALIDATOR VIEW ---
+            <div className="max-w-3xl mx-auto">
+                {!validationResult ? (
+                     <div className="relative group border-2 border-dashed border-zinc-700 hover:border-indigo-500 hover:bg-zinc-800/50 rounded-2xl p-12 transition-all duration-300 text-center">
+                        <input 
+                            type="file" 
+                            accept=".tar" 
+                            onChange={handleFileChangeForValidator}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                        />
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <div className="p-4 rounded-full bg-zinc-800 text-zinc-400 group-hover:text-indigo-400 transition-colors">
+                                <Package className="w-12 h-12" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white">Validate Existing Package</h3>
+                                <p className="text-zinc-400 mt-2 max-w-sm mx-auto">
+                                    Upload a .tar file to verify certificate integrity, key matching, and chain completeness.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <PackageVerifier fileName={validatorFileName} result={validationResult} />
+                )}
+            </div>
+        )}
       </main>
 
       <SftpModal 

@@ -2,7 +2,6 @@ import forge from 'node-forge';
 import { CertificateInfo } from '../types';
 
 // --- TAR Helper Functions ---
-// A lightweight implementation to avoid heavy dependencies for simple flat TAR creation
 
 function writeString(buffer: Uint8Array, offset: number, str: string, len: number): number {
   let i = 0;
@@ -14,7 +13,6 @@ function writeString(buffer: Uint8Array, offset: number, str: string, len: numbe
 
 function writeOctal(buffer: Uint8Array, offset: number, len: number, val: number): number {
   const s = val.toString(8);
-  // Write formatted octal number followed by space or null
   const idx = len - s.length - 1;
   let i = 0;
   for (; i < idx; i++) {
@@ -43,11 +41,8 @@ function createTarHeader(filename: string, size: number): Uint8Array {
   offset = writeString(block, offset, "ustar", 6);    // ustar indicator
   offset = writeString(block, offset, "00", 2);       // ustar version
 
-  // Calculate checksum
   let chksum = 0;
   for (let i = 0; i < 512; i++) chksum += block[i];
-  
-  // Write actual checksum
   writeOctal(block, 148, 8, chksum);
   
   return block;
@@ -64,20 +59,16 @@ export const createTarball = (files: { name: string; content: string | Uint8Arra
     
     const header = createTarHeader(file.name, contentBytes.length);
     blocks.push(header);
-
     blocks.push(contentBytes);
 
-    // Padding to 512 bytes
     const padding = 512 - (contentBytes.length % 512);
     if (padding < 512) {
       blocks.push(new Uint8Array(padding));
     }
   });
 
-  // Two empty blocks at end
   blocks.push(new Uint8Array(1024));
-
-  // Calculate total length
+  
   totalSize = blocks.reduce((acc, b) => acc + b.length, 0);
   const result = new Uint8Array(totalSize);
   
@@ -90,10 +81,74 @@ export const createTarball = (files: { name: string; content: string | Uint8Arra
   return result;
 };
 
+// --- TAR Reading Logic ---
+
+interface ExtractedFile {
+  name: string;
+  content: string; // Assuming text content for certs/keys
+  size: number;
+}
+
+export const untar = (arrayBuffer: ArrayBuffer): ExtractedFile[] => {
+  const files: ExtractedFile[] = [];
+  const uint8 = new Uint8Array(arrayBuffer);
+  let offset = 0;
+
+  const readString = (start: number, len: number) => {
+    let end = start;
+    while (end < start + len && uint8[end] !== 0) end++;
+    return new TextDecoder().decode(uint8.slice(start, end));
+  };
+
+  const readOctal = (start: number, len: number) => {
+     const str = readString(start, len);
+     return parseInt(str, 8);
+  };
+
+  while (offset + 512 <= uint8.length) {
+    // Check for end of archive (two null blocks)
+    let isNullBlock = true;
+    for(let i=0; i<512; i++) {
+        if(uint8[offset + i] !== 0) {
+            isNullBlock = false;
+            break;
+        }
+    }
+    if (isNullBlock) {
+        // Check next block to confirm end
+        if (offset + 1024 <= uint8.length && uint8[offset + 512] === 0) break;
+        // Otherwise skip this padding block
+        offset += 512;
+        continue;
+    }
+
+    const name = readString(offset, 100);
+    const size = readOctal(offset + 124, 12);
+    const type = String.fromCharCode(uint8[offset + 156]);
+
+    // Calculate next block start
+    const contentStart = offset + 512;
+    
+    if (type === '0' || type === '\0' || type === ' ') {
+        const contentBytes = uint8.slice(contentStart, contentStart + size);
+        files.push({
+            name,
+            content: new TextDecoder().decode(contentBytes),
+            size
+        });
+    }
+
+    // Move to next header (size rounded up to 512 blocks)
+    offset = contentStart + (Math.ceil(size / 512) * 512);
+  }
+
+  return files;
+};
+
 // --- X.509 Logic ---
 
 const normalizePem = (pem: string) => {
-    if (!pem.includes('-----BEGIN CERTIFICATE-----')) {
+    if (!pem.includes('-----BEGIN CERTIFICATE-----') && !pem.includes('BEGIN PRIVATE KEY') && !pem.includes('BEGIN RSA PRIVATE KEY')) {
         return `-----BEGIN CERTIFICATE-----\n${pem.trim()}\n-----END CERTIFICATE-----`;
     }
     return pem;
@@ -113,12 +168,11 @@ export const parseCertificate = (pemOrDer: string): { cert: forge.pki.Certificat
   const issuer = cert.issuer.attributes.find(attr => attr.shortName === 'CN' || attr.name === 'commonName');
   const org = cert.subject.attributes.find(attr => attr.shortName === 'O' || attr.name === 'organizationName');
   
-  // Extract AIA
   const ext = cert.getExtension('1.3.6.1.5.5.7.1.1'); 
   let aiaUrl: string | undefined;
   if (ext) {
       try {
-         const val = ext.value; 
+         const val = (ext as any).value; 
          const match = val.match(/http[s]?:\/\/[a-zA-Z0-9./-]+.crt/);
          if (match) {
              aiaUrl = match[0];
@@ -162,7 +216,6 @@ export const verifyParent = (childPem: string, parentPem: string): boolean => {
     const child = forge.pki.certificateFromPem(normalizePem(childPem));
     const parent = forge.pki.certificateFromPem(normalizePem(parentPem));
     
-    // 1. Strict Cryptographic Verification
     try {
         if (child.verify(parent)) {
             return true;
@@ -171,13 +224,7 @@ export const verifyParent = (childPem: string, parentPem: string): boolean => {
         // Fall through to loose check
     }
 
-    // 2. Loose Check: DN Matching
-    // Sometimes forge fails on specific algorithms or padding, but if the 
-    // Issuer DN matches the Parent Subject DN, we can assume it's part of the chain
-    // for the context of this tool (packaging), flagging it as valid avoids blocking work.
-    
-    // Helper to get a comparable string for DN
-    const getDnString = (attrs: forge.pki.Attribute[]) => {
+    const getDnString = (attrs: any[]) => {
         return attrs.map(a => `${a.shortName}=${a.value}`).sort().join(', ');
     };
 
@@ -192,6 +239,12 @@ export const verifyParent = (childPem: string, parentPem: string): boolean => {
 
 export const isSelfSigned = (pem: string): boolean => {
   return verifyParent(pem, pem);
+};
+
+// Breaks a bundle string into array of PEM strings
+export const splitCaBundle = (bundle: string): string[] => {
+    const matches = bundle.match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g);
+    return matches || [];
 };
 
 export const fetchCertificate = async (url: string): Promise<string> => {
