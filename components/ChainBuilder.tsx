@@ -19,7 +19,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({ leafCert, chain, onA
   const isRootReached = chain.length > 0 && chain[chain.length - 1].isRoot;
 
   return (
-    <div className="space-y-8 max-w-3xl mx-auto">
+    <div className="space-y-8 max-w-3xl mx-auto pb-12">
       <div className="flex flex-col items-center space-y-2">
         <h2 className="text-xl font-bold text-zinc-800 dark:text-white">{t('chainAssembly')}</h2>
         <p className="text-zinc-500 dark:text-zinc-400 text-center max-w-lg text-sm">
@@ -50,7 +50,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({ leafCert, chain, onA
           <div key={item.id} className="flex flex-col items-center animate-fade-in">
              <div className="h-8 w-0.5 bg-zinc-300 dark:bg-zinc-700 my-1 relative">
                 {!item.signsChild && (
-                    <div className="absolute top-1/2 -translate-y-1/2 left-2 w-max flex items-center gap-1 text-red-500 dark:text-red-400 text-xs bg-white dark:bg-zinc-950 border border-red-500/30 px-2 py-1 rounded">
+                    <div className="absolute top-1/2 -translate-y-1/2 left-2 w-max flex items-center gap-1 text-red-500 dark:text-red-400 text-xs bg-white dark:bg-zinc-950 border border-red-500/30 px-2 py-1 rounded z-20">
                         <AlertCircle size={12} /> {t('brokenLink')}
                     </div>
                 )}
@@ -94,7 +94,6 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({ leafCert, chain, onA
                     </p>
                     
                     <div className="max-w-xs mx-auto">
-                        {/* Key ensures input clears on successful addition */}
                         <FileUpload 
                             key={chain.length}
                             label={t('selectCertOrBundle')}
@@ -108,10 +107,15 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({ leafCert, chain, onA
         )}
 
         {isRootReached && (
-             <div className="flex flex-col items-center mt-4 animate-bounce">
-                <div className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-4 py-2 rounded-full border border-emerald-500/30 flex items-center gap-2">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span className="font-medium text-sm">{t('chainComplete')}</span>
+             <div className="flex flex-col items-center animate-in fade-in slide-in-from-top-2 duration-500">
+                {/* Connector Line to Badge */}
+                <div className="h-8 w-0.5 bg-zinc-300 dark:bg-zinc-700"></div>
+                
+                <div className="relative z-20 -mt-1">
+                    <div className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-6 py-2 rounded-full border border-emerald-500/30 flex items-center gap-2 shadow-lg shadow-emerald-500/10 backdrop-blur-sm bg-white/50 dark:bg-zinc-900/80">
+                        <CheckCircle2 className="w-5 h-5" />
+                        <span className="font-bold text-sm tracking-tight">{t('chainComplete')}</span>
+                    </div>
                 </div>
              </div>
         )}

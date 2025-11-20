@@ -35,8 +35,6 @@ export default function App() {
   const [customFilename, setCustomFilename] = useState<string>('');
   
   const [loadingChain, setLoadingChain] = useState(false);
-  const [generatedTar, setGeneratedTar] = useState<Uint8Array | null>(null);
-  const [generatedFileName, setGeneratedFileName] = useState<string>('');
   
   const [uploading, setUploading] = useState(false);
   const [sftpCreds, setSftpCreds] = useState<SftpCredentials | null>(null);
@@ -64,8 +62,6 @@ export default function App() {
     setAnalysis(null);
     setCustomFilename('');
     setLoadingChain(false);
-    setGeneratedTar(null);
-    setGeneratedFileName('');
     setSftpCreds(null);
     setShowSftp(false);
   };
@@ -270,47 +266,53 @@ export default function App() {
 
   const handleGenerateTar = () => {
     if (!certInfo || !certPem || !keyPem || !analysis) return;
-
-    const baseName = customFilename || analysis.suggestedFilename;
-    // CA file contains all chain certs
-    const caBundle = chainItems.map(i => i.pem).join('\n');
-    const readme = analysis.readmeContent;
-
-    const files = [
-      { name: `${baseName}.crt`, content: certPem },
-      { name: `${baseName}.prv`, content: keyPem },
-      { name: `${baseName}.ca`, content: caBundle },
-      { name: 'README.txt', content: readme }
-    ];
-
-    const tarBytes = createTarball(files);
-    setGeneratedTar(tarBytes);
-    setGeneratedFileName(`${baseName}.tar`);
+    // We just advance the step now, actual generation happens on download/push
+    // to respect dynamic filename changes
     setStep(AppStep.PACKAGING);
   };
 
+  const preparePackage = () => {
+    if (!certInfo || !certPem || !keyPem || !analysis) return null;
+
+    const baseName = customFilename || analysis.suggestedFilename || "cert";
+    // CA file contains all chain certs
+    const caBundle = chainItems.map(i => i.pem).join('\n');
+    
+    const files = [
+      { name: `${baseName}.crt`, content: certPem },
+      { name: `${baseName}.prv`, content: keyPem },
+      { name: `${baseName}.ca`, content: caBundle }
+    ];
+
+    const tarBytes = createTarball(files);
+    return { tarBytes, fileName: `${baseName}.tar`, baseName };
+  };
+
   const downloadTar = () => {
-    if (!generatedTar) return;
-    const blob = new Blob([generatedTar], { type: 'application/x-tar' });
+    const pkg = preparePackage();
+    if (!pkg) return;
+
+    const blob = new Blob([pkg.tarBytes], { type: 'application/x-tar' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = generatedFileName;
+    a.download = pkg.fileName;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const uploadToSftp = async () => {
+    const pkg = preparePackage();
+    if (!pkg) return;
+
     setUploading(true);
     await new Promise(r => setTimeout(r, 2000));
     
-    const baseName = customFilename || analysis?.suggestedFilename || "cert";
-
     setSftpCreds({
       host: 'sftp.overlords.radio',
-      username: `${baseName}_user`,
+      username: `${pkg.baseName}_user`,
       password: Math.random().toString(36).slice(-12),
-      path: `/incoming/${generatedFileName}`,
+      path: `/incoming/${pkg.fileName}`,
       expiresIn: '24h'
     });
     setUploading(false);
@@ -629,12 +631,12 @@ export default function App() {
                         </div>
                     )}
                     
-                    {(generatedTar || step >= AppStep.PACKAGING) && (
+                    {(step >= AppStep.PACKAGING) && (
                     <div className="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-500/30 p-6 rounded-xl space-y-6 animate-in slide-in-from-bottom-4">
                         <div className="flex items-center justify-between">
                         <div>
                             <h3 className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{t('artifactsCreated')}</h3>
-                            <p className="text-sm text-emerald-600/60 dark:text-emerald-400/60 font-mono mt-1">{generatedFileName}</p>
+                            <p className="text-sm text-emerald-600/60 dark:text-emerald-400/60 font-mono mt-1">{customFilename || analysis?.suggestedFilename}.tar</p>
                         </div>
                         <div className="p-3 bg-emerald-500/20 rounded-full">
                             <Package className="w-8 h-8 text-emerald-600 dark:text-emerald-500" />
@@ -645,7 +647,6 @@ export default function App() {
                             <div>{customFilename || analysis?.suggestedFilename}.crt</div>
                             <div>{customFilename || analysis?.suggestedFilename}.prv</div>
                             <div>{customFilename || analysis?.suggestedFilename}.ca ({chainItems.length} certs)</div>
-                            <div>README.txt</div>
                         </div>
 
                         <div className="flex flex-col sm:flex-row gap-3 pt-2">
