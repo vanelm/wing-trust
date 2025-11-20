@@ -1,0 +1,5 @@
+{
+  "name": "WiNG Trustpoint Builder",
+  "description": "Advanced X.509 Certificate processor. Analyzes certificates, resolves chains, verifies keys, and packages artifacts into TAR archives with SFTP integration.",
+  "requestFramePermissions": []
+}
