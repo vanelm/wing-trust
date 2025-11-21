@@ -5,14 +5,15 @@ import { CertViewer } from './components/CertViewer';
 import { SftpModal } from './components/SftpModal';
 import { ChainBuilder } from './components/ChainBuilder';
 import { PackageVerifier } from './components/PackageVerifier';
+import { CertRequester } from './components/CertRequester';
 import { parseCertificate, checkKeyPair, fetchCertificate, createTarball, verifyParent, isSelfSigned, untar, splitCaBundle } from './services/cryptoService';
 import { analyzeCertificate } from './services/geminiService';
 import { CertificateInfo, AppStep, SftpCredentials, ChainItem } from './types';
-import { ArrowRight, Package, UploadCloud, FileKey, Loader2, ShieldCheck, Download, Layers, ChevronRight, RotateCcw, PenLine, Hammer, FileSearch, Sun, Moon, Monitor } from 'lucide-react';
+import { ArrowRight, Package, UploadCloud, FileKey, Loader2, ShieldCheck, Download, Layers, ChevronRight, RotateCcw, PenLine, Hammer, FileSearch, Sun, Moon, Monitor, Globe } from 'lucide-react';
 import { useLanguage } from './contexts/LanguageContext';
 import { useTheme } from './contexts/ThemeContext';
 
-type AppMode = 'builder' | 'validator';
+type AppMode = 'builder' | 'validator' | 'requester';
 
 export default function App() {
   const { t, language, setLanguage } = useLanguage();
@@ -449,15 +450,21 @@ export default function App() {
             <div className="hidden sm:flex bg-zinc-100 dark:bg-zinc-900 rounded-lg p-1 border border-zinc-200 dark:border-zinc-800 transition-colors">
                 <button 
                     onClick={() => setMode('builder')}
-                    className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'builder' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'builder' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                 >
                     <Hammer size={12} /> {t('modeBuilder')}
                 </button>
                 <button 
                     onClick={() => setMode('validator')}
-                    className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'validator' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'validator' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                 >
                     <FileSearch size={12} /> {t('modeValidator')}
+                </button>
+                <button 
+                    onClick={() => setMode('requester')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'requester' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                >
+                    <Globe size={12} /> {t('modeRequester')}
                 </button>
             </div>
 
@@ -680,7 +687,7 @@ export default function App() {
                 )}
             </div>
             </div>
-        ) : (
+        ) : mode === 'validator' ? (
             // --- VALIDATOR VIEW ---
             <div className="max-w-3xl mx-auto">
                 {!validationResult ? (
@@ -707,6 +714,9 @@ export default function App() {
                     <PackageVerifier fileName={validatorFileName} result={validationResult} />
                 )}
             </div>
+        ) : (
+            // --- REQUESTER VIEW ---
+            <CertRequester />
         )}
       </main>
 

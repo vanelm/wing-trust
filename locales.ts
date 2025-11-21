@@ -5,6 +5,7 @@ export const translations = {
     appTitle: "WiNG Trustpoint Forge",
     modeBuilder: "Builder",
     modeValidator: "Validator",
+    modeRequester: "Requester",
     stepUpload: "UPLOAD",
     stepChain: "CHAIN",
     stepReview: "REVIEW",
@@ -34,6 +35,19 @@ export const translations = {
     downloadLocal: "Download Local",
     pushSftp: "Push to SFTP",
     uploading: "Uploading...",
+
+    // Requester Section
+    requestTitle: "External CA Request",
+    requestDesc: "Initiate a new certificate issuance workflow via external API pipeline. Monitor progress in real-time.",
+    commonName: "Common Name",
+    commonNamePlaceholder: "e.g. service.internal.local",
+    sendRequest: "Issue Certificate",
+    connection: "Connection",
+    connected: "Connected",
+    disconnected: "Disconnected",
+    logs: "Process Logs",
+    ready: "System Ready. Waiting for request...",
+    processing: "Processing",
 
     // Validator Section
     validateTitle: "Validate Existing Package",
@@ -105,6 +119,7 @@ export const translations = {
     appTitle: "WiNG Trustpoint Фабрика",
     modeBuilder: "Конструктор",
     modeValidator: "Проверка",
+    modeRequester: "Запрос",
     stepUpload: "ЗАГРУЗКА",
     stepChain: "ЦЕПОЧКА",
     stepReview: "ОБЗОР",
@@ -134,6 +149,19 @@ export const translations = {
     downloadLocal: "Скачать локально",
     pushSftp: "Отправить на SFTP",
     uploading: "Загрузка...",
+
+    // Requester Section
+    requestTitle: "Запрос во внешний CA",
+    requestDesc: "Инициируйте выпуск сертификата через внешний API. Следите за процессом в реальном времени.",
+    commonName: "Common Name (CN)",
+    commonNamePlaceholder: "например service.internal.local",
+    sendRequest: "Выпустить сертификат",
+    connection: "Соединение",
+    connected: "Подключено",
+    disconnected: "Отключено",
+    logs: "Журнал процесса",
+    ready: "Система готова. Ожидание запроса...",
+    processing: "Обработка",
 
     // Validator Section
     validateTitle: "Проверка готового пакета",
