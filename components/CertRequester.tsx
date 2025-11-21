@@ -3,9 +3,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Terminal, Loader2, Activity, Wifi, WifiOff, Globe, Building } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
+const BASE_DOMAIN = process.env.BASE_DOMAIN || '.internal.local';
+const API_HOST = process.env.CERT_API_HOST || 'localhost';
+const API_PORT = process.env.CERT_API_PORT || '5000';
+
 export const CertRequester: React.FC = () => {
   const { t } = useLanguage();
-  const [commonName, setCommonName] = useState('');
+  const [subdomain, setSubdomain] = useState('');
   const [organization, setOrganization] = useState('');
   const [logs, setLogs] = useState<{ts: string, msg: string, type: 'info'|'error'|'success'|'warning'}[]>([]);
   const [status, setStatus] = useState<'idle' | 'requesting' | 'processing' | 'completed' | 'failed'>('idle');
@@ -33,7 +37,7 @@ export const CertRequester: React.FC = () => {
   const connectWs = () => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
-    const ws = new WebSocket('ws://localhost:5000/ws/status');
+    const ws = new WebSocket(`ws://${API_HOST}:${API_PORT}/ws/status`);
     
     ws.onopen = () => {
       setWsConnected(true);
@@ -72,9 +76,23 @@ export const CertRequester: React.FC = () => {
     wsRef.current = ws;
   };
 
+  const handleSubdomainChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      // Allow only lowercase a-z and max length 12
+      if (/^[a-z]*$/.test(val) && val.length <= 12) {
+          setSubdomain(val);
+      }
+  };
+
   const handleRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commonName) return;
+    
+    if (subdomain.length < 3) {
+        addLog('Validation Error: Common Name must be at least 3 characters.', 'error');
+        return;
+    }
+
+    const commonName = `${subdomain}${BASE_DOMAIN}`;
     
     setStatus('requesting');
     setLogs([]); // Clear previous logs
@@ -84,7 +102,7 @@ export const CertRequester: React.FC = () => {
     connectWs();
 
     try {
-      const response = await fetch('http://localhost:5000/issue_cert', {
+      const response = await fetch(`http://${API_HOST}:${API_PORT}/issue_cert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ commonName, organization })
@@ -122,16 +140,26 @@ export const CertRequester: React.FC = () => {
               <form onSubmit={handleRequest} className="space-y-4">
                   <div>
                       <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1.5">{t('commonName')}</label>
-                      <div className="relative">
-                          <Globe className="absolute left-3 top-2.5 w-4 h-4 text-zinc-400" />
+                      <div className="flex items-center w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus-within:ring-2 focus-within:ring-indigo-500/50 transition-all">
+                          <div className="pl-3 text-zinc-400">
+                              <Globe className="w-4 h-4" />
+                          </div>
                           <input 
                               type="text" 
-                              value={commonName}
-                              onChange={(e) => setCommonName(e.target.value)}
-                              placeholder={t('commonNamePlaceholder')}
-                              className="w-full pl-9 pr-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 dark:text-white placeholder:text-zinc-400"
+                              value={subdomain}
+                              onChange={handleSubdomainChange}
+                              placeholder="service"
+                              className="flex-1 min-w-0 py-2 pl-2 bg-transparent border-none focus:outline-none text-sm text-right dark:text-white placeholder:text-zinc-400"
                               required
                           />
+                          <div className="pr-3 pl-0.5 py-2 text-sm text-zinc-500 font-mono select-none whitespace-nowrap">
+                              {BASE_DOMAIN}
+                          </div>
+                      </div>
+                      <div className="flex justify-end mt-1">
+                        <span className="text-[10px] text-zinc-400">
+                            {subdomain.length}/12 (min 3, a-z)
+                        </span>
                       </div>
                   </div>
 
@@ -222,3 +250,4 @@ export const CertRequester: React.FC = () => {
     </div>
   );
 };
+    
