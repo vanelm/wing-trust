@@ -72,6 +72,18 @@ export default function App() {
     setValidatorFileName('');
   };
 
+  const toggleTheme = () => {
+    if (theme === 'light') setTheme('dark');
+    else if (theme === 'dark') setTheme('system');
+    else setTheme('light');
+  };
+
+  const toggleLanguage = () => {
+    setLanguage(language === 'en' ? 'ru' : 'en');
+  };
+
+  const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor;
+
   // Process Certificate when uploaded
   useEffect(() => {
     if (certPem) {
@@ -438,93 +450,78 @@ export default function App() {
       {/* Header */}
       <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-md sticky top-0 z-30 transition-colors duration-300">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-indigo-600 dark:text-indigo-500" />
-            <span className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white">
-              WiNG <span className="text-indigo-600 dark:text-indigo-500">Trustpoint Forge</span>
-            </span>
-          </div>
           
-          {/* Mode Switcher & Settings */}
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex bg-zinc-100 dark:bg-zinc-900 rounded-lg p-1 border border-zinc-200 dark:border-zinc-800 transition-colors">
+          <div className="flex items-center gap-6">
+            {/* Logo */}
+            <div className="flex items-center gap-2">
+                <ShieldCheck className="w-6 h-6 text-indigo-600 dark:text-indigo-500" />
+                <span className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white">
+                WiNG <span className="text-indigo-600 dark:text-indigo-500">Trustpoint Forge</span>
+                </span>
+            </div>
+
+            {/* Mode Switcher - Compact Tabs */}
+            <div className="hidden md:flex items-center bg-zinc-100 dark:bg-zinc-900 rounded-lg p-1 border border-zinc-200 dark:border-zinc-800">
                 <button 
                     onClick={() => setMode('builder')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'builder' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'builder' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                 >
                     <Hammer size={12} /> {t('modeBuilder')}
                 </button>
                 <button 
                     onClick={() => setMode('validator')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'validator' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'validator' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                 >
                     <FileSearch size={12} /> {t('modeValidator')}
                 </button>
                 <button 
                     onClick={() => setMode('requester')}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'requester' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                    className={`px-3 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${mode === 'requester' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
                 >
                     <Globe size={12} /> {t('modeRequester')}
                 </button>
             </div>
-
-            {/* Theme Switcher */}
-            <div className="flex bg-zinc-100 dark:bg-zinc-900 rounded-lg p-1 border border-zinc-200 dark:border-zinc-800 transition-colors">
-                <button 
-                    onClick={() => setTheme('light')}
-                    title={t('themeLight')}
-                    className={`p-1.5 rounded-md transition-all ${theme === 'light' ? 'bg-white dark:bg-zinc-800 text-yellow-500 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                >
-                    <Sun size={14} />
-                </button>
-                <button 
-                    onClick={() => setTheme('dark')}
-                    title={t('themeDark')}
-                    className={`p-1.5 rounded-md transition-all ${theme === 'dark' ? 'bg-white dark:bg-zinc-800 text-indigo-400 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                >
-                    <Moon size={14} />
-                </button>
-                <button 
-                    onClick={() => setTheme('system')}
-                    title={t('themeSystem')}
-                    className={`p-1.5 rounded-md transition-all ${theme === 'system' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-200 shadow-sm' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                >
-                    <Monitor size={14} />
-                </button>
-            </div>
-
-            <div className="flex bg-zinc-100 dark:bg-zinc-900 rounded-lg p-1 border border-zinc-200 dark:border-zinc-800 transition-colors">
-                <button 
-                    onClick={() => setLanguage('en')}
-                    className={`px-2 py-1.5 rounded-md text-xs font-medium transition-all ${language === 'en' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
-                >
-                    EN
-                </button>
-                <button 
-                    onClick={() => setLanguage('ru')}
-                    className={`px-2 py-1.5 rounded-md text-xs font-medium transition-all ${language === 'ru' ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm' : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
-                >
-                    RU
-                </button>
-            </div>
           </div>
-
-          <div className="flex items-center gap-6">
+          
+          {/* Right Side: Compact Actions */}
+          <div className="flex items-center gap-3">
             {mode === 'builder' && (
-                <div className="hidden md:flex items-center gap-2 text-xs font-mono text-zinc-400 dark:text-zinc-500">
-                    <span className={`flex items-center gap-1 ${step >= 0 ? 'text-indigo-600 dark:text-indigo-400' : ''}`}>1. {t('stepUpload')}</span>
-                    <ChevronRight size={12} />
-                    <span className={step >= AppStep.CHAIN_BUILD ? 'text-indigo-600 dark:text-indigo-400' : ''}>2. {t('stepChain')}</span>
-                    <ChevronRight size={12} />
-                    <span className={step >= AppStep.ANALYSIS ? 'text-indigo-600 dark:text-indigo-400' : ''}>3. {t('stepReview')}</span>
+                <div className="hidden lg:flex items-center gap-2 text-[10px] font-mono text-zinc-400 dark:text-zinc-600 mr-4">
+                    <span className={`flex items-center gap-1 ${step >= 0 ? 'text-indigo-600 dark:text-indigo-400 font-bold' : ''}`}>1. {t('stepUpload')}</span>
+                    <ChevronRight size={10} />
+                    <span className={step >= AppStep.CHAIN_BUILD ? 'text-indigo-600 dark:text-indigo-400 font-bold' : ''}>2. {t('stepChain')}</span>
+                    <ChevronRight size={10} />
+                    <span className={step >= AppStep.ANALYSIS ? 'text-indigo-600 dark:text-indigo-400 font-bold' : ''}>3. {t('stepReview')}</span>
                 </div>
             )}
 
+            {/* Language Toggle */}
+            <button 
+                onClick={toggleLanguage}
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                title="Switch Language"
+            >
+                <Globe size={16} />
+                <span className="text-xs font-mono font-bold uppercase tracking-wide">{language}</span>
+            </button>
+
+            {/* Theme Toggle */}
+            <button 
+                onClick={toggleTheme}
+                className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+                title={t('theme')}
+            >
+                <ThemeIcon size={16} />
+            </button>
+
+            <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-800 mx-1"></div>
+
             <button 
                 onClick={handleReset}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-red-500/10 dark:hover:bg-red-500/10 text-zinc-500 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 transition-colors text-xs font-medium"
+                className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-zinc-400 hover:text-red-500 dark:text-zinc-500 dark:hover:text-red-400 transition-colors"
+                title="Reset"
             >
-                <RotateCcw size={14} />
+                <RotateCcw size={16} />
             </button>
           </div>
         </div>
